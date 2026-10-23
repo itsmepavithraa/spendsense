@@ -2,7 +2,7 @@
 
 A real-time personal finance app that **automatically categorizes transactions, flags unusual spending with machine learning, and updates live**. Built as a full-stack + data science + cloud project.
 
-> **Status: work in progress.** Backend, ML models and the database layer are done; real-time WebSockets, the Next.js frontend, payments, Power BI analytics and cloud deployment are in progress.
+> **Status: work in progress.** Backend, ML models, real-time layer and the Next.js dashboard are done; payments, Power BI analytics and cloud deployment are next.
 
 ## What it does
 - Register / log in (JWT authentication)
@@ -11,7 +11,8 @@ A real-time personal finance app that **automatically categorizes transactions, 
 - **ML anomaly detection:** an Isolation Forest flags amounts that are unusual for their category
 - **Real-time updates:** a WebSocket (`/ws?token=<JWT>`) pushes `transaction.created` and `anomaly.alert` events to the user's open tabs the moment a transaction is saved. Each user only receives their own events.
 - **Bank-feed simulator:** `POST /simulate/start` streams random transactions (through the same save + ML path) so a demo always has live data; `POST /simulate/stop` ends it.
-- *(planned)* live dashboard UI, subscription detection, Pro plan via Razorpay/Stripe, Power BI analytics
+- **Live dashboard (Next.js):** login/register, headline stats, spend-by-category donut, monthly trend, an add-transaction form, and a transaction table where new rows appear instantly with a toast alert for unusual charges.
+- *(planned)* subscription detection, Pro plan via Razorpay/Stripe, Power BI analytics
 
 ## Tech stack
 | Layer | Technology |
@@ -20,8 +21,10 @@ A real-time personal finance app that **automatically categorizes transactions, 
 | Database | PostgreSQL + SQLAlchemy + Alembic migrations |
 | Cache / pub-sub | Redis |
 | ML | scikit-learn (TF-IDF + Logistic Regression, Isolation Forest) |
+| Real-time | WebSockets (FastAPI) |
+| Frontend | Next.js 14 (App Router), TypeScript, Tailwind CSS, Recharts |
 | Containers | Docker, Docker Compose |
-| *Planned* | Next.js, WebSockets, Razorpay/Stripe, Power BI, cloud deployment, GitHub Actions CI |
+| *Planned* | Razorpay/Stripe, Power BI, cloud deployment, GitHub Actions CI |
 
 ## Project layout
 ```
@@ -36,10 +39,14 @@ backend/
     deps.py            get_current_user dependency
     services.py        shared "create transaction" logic (ML + save)
     realtime.py        WebSocket connection manager and event builder
-    routers/           auth.py, transactions.py, ws.py, simulate.py
+    routers/           auth.py, transactions.py, analytics.py, ws.py, simulate.py
     ml/                train.py, inference.py, artifacts/ (trained models)
   alembic/             database migrations
   scripts/seed.py      generates ~5k synthetic transactions
+frontend/
+  app/                 pages: /login and /dashboard
+  components/          stat cards, charts, transaction table, add form, toasts
+  lib/                 api.ts (typed client), useLiveFeed.ts (WebSocket hook)
 docker-compose.yml     Postgres + Redis + API
 ```
 
@@ -56,6 +63,13 @@ docker-compose.yml     Postgres + Redis + API
    ```
 4. Open the interactive API docs at http://localhost:8000/docs  
    Demo login: `demo@spendsense.com` / `demo12345`
+5. Start the dashboard (needs Node 18+):
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+   Open http://localhost:3000, log in with the demo account and click **Simulate bank feed** to watch transactions arrive live.
 
 ### Retrain the ML models
 ```bash
@@ -70,7 +84,7 @@ The models are trained on a **synthetic dataset** (~5k transactions) generated b
 - [x] ML categorizer and anomaly detector wired into the API
 - [x] Real-time WebSocket feed, live anomaly alerts and bank-feed simulator
 - [ ] Redis pub/sub so real-time works across multiple API servers
-- [ ] Next.js dashboard
+- [x] Next.js dashboard with live feed, charts and anomaly toasts
 - [ ] Payments (Pro plan) and webhooks
 - [ ] Power BI analytics
 - [ ] Tests, CI/CD and cloud deployment

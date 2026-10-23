@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --page: #f6f7fb;
+  --surface: #ffffff;
+  --ink: #0f172a;
+  --muted: #64748b;
+  --line: #e2e8f0;
+  --accent: #4f46e5;
+  --danger: #dc2626;
+  --good: #16a34a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #0b1020;
+    --surface: #131a2e;
+    --ink: #e5e9f5;
+    --muted: #8b95b0;
+    --line: #232c47;
+    --accent: #818cf8;
+    --danger: #f87171;
+    --good: #4ade80;
+  }
+}
+
+body {
+  background: var(--page);
+  color: var(--ink);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/* a new live row briefly glows so the eye catches it */
+@keyframes flash {
+  from { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+  to   { background: transparent; }
+}
+.flash { animation: flash 2.2s ease-out; }
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.slide-in { animation: slide-in 0.25s ease-out; }

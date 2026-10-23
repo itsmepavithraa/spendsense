@@ -4,5 +4,8 @@ __pycache__/
 .venv/
 node_modules/
 .next/
+.env.local
+next-env.d.ts
+*.tsbuildinfo
 backend/data/
 .tmp/

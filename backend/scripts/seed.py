@@ -51,7 +51,9 @@ def random_datetime(now: datetime) -> datetime:
     day = now - timedelta(days=random.randint(0, DAYS - 1))
     # people spend more during the day than at 3 AM
     hour = random.choices(range(24), weights=[1] * 7 + [4] * 4 + [8] * 6 + [10] * 5 + [3] * 2)[0]
-    return day.replace(hour=hour, minute=random.randint(0, 59), second=random.randint(0, 59), microsecond=0)
+    when = day.replace(hour=hour, minute=random.randint(0, 59), second=random.randint(0, 59), microsecond=0)
+    # for "today", a random hour can land in the future; never generate those
+    return min(when, now)
 
 
 def build_rows(user_id: int) -> list[dict]:
