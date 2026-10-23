@@ -1,14 +1,16 @@
 # SpendSense
 
+[![CI](https://github.com/itsmepavithraa/spendsense/actions/workflows/ci.yml/badge.svg)](https://github.com/itsmepavithraa/spendsense/actions/workflows/ci.yml)
+
 A real-time personal finance app that **automatically categorizes transactions, flags unusual spending with machine learning, and updates live**. Built as a full-stack + data science + cloud project.
 
-> **Status: work in progress.** Backend, ML models, real-time layer and the Next.js dashboard are done; payments, Power BI analytics and cloud deployment are next.
+> **Status:** feature-complete and tested (40 automated tests, CI on every push). Left to do: deploy the live demo and add Power BI report screenshots.
 
 ## What it does
 - Register / log in (JWT authentication)
 - Add, view, edit and delete transactions (each user sees only their own data)
 - **ML auto-categorization:** a merchant name such as "Swiggy" is labelled *Food & Dining* automatically
-- **ML anomaly detection:** an Isolation Forest flags amounts that are unusual for their category
+- **ML anomaly detection:** an Isolation Forest scores each amount against its category's normal range and flags unusually *large* charges (tiny purchases never raise alerts)
 - **Real-time updates:** a WebSocket (`/ws?token=<JWT>`) pushes `transaction.created` and `anomaly.alert` events to the user's open tabs the moment a transaction is saved. Each user only receives their own events.
 - **Bank-feed simulator:** `POST /simulate/start` streams random transactions (through the same save + ML path) so a demo always has live data; `POST /simulate/stop` ends it.
 - **Live dashboard (Next.js):** login/register, headline stats, spend-by-category donut, monthly trend, an add-transaction form, and a transaction table where new rows appear instantly with a toast alert for unusual charges.
@@ -28,8 +30,8 @@ A real-time personal finance app that **automatically categorizes transactions, 
 | Payments | Razorpay (test mode), HMAC-verified checkout and webhook |
 | Analytics | SQL views + Power BI |
 | Containers | Docker, Docker Compose |
-| Tests | pytest |
-| *Planned* | Cloud deployment, GitHub Actions CI |
+| Tests / CI | pytest, GitHub Actions (SQLite + real PostgreSQL + frontend build) |
+| Deployment | Dockerfile + `render.yaml` (Render), Vercel for the frontend |
 
 ## Project layout
 ```
@@ -49,8 +51,11 @@ backend/
   alembic/             database migrations (tables, payments, BI views)
   scripts/seed.py      synthetic transactions + fake sign-ups/purchases
   scripts/export_bi_csv.py   dumps the BI views to CSV for Power BI
-  tests/               pytest suite (payments, signatures, Pro gating)
+  tests/               pytest suite: auth, isolation, ML, WebSockets, payments, analytics
 docs/powerbi.md        Power BI build guide
+docs/deploy.md         step-by-step deployment (Render + Vercel)
+render.yaml            Render blueprint (API + PostgreSQL)
+.github/workflows/     CI pipeline
 frontend/
   app/                 pages: /login and /dashboard
   components/          stat cards, charts, transaction table, add form, toasts
@@ -95,6 +100,17 @@ python -m pytest tests -q
 ```
 The tests use SQLite and a fake Razorpay (no Docker or internet needed), but they exercise the real signature checks.
 
+To also run them against real PostgreSQL (this enables the subscription-detection and connection-leak tests), create an empty database, apply the migrations to it, and point `TEST_DATABASE_URL` at it. **Use a separate database: the tests empty their tables.**
+```bash
+export DATABASE_URL=postgresql+psycopg2://user:pass@localhost:5432/spendsense_test
+alembic upgrade head
+TEST_DATABASE_URL=$DATABASE_URL python -m pytest tests -q
+```
+CI does exactly this on every push, and also checks that the migrations can be rolled all the way back and re-applied.
+
+### Deploy it
+See [docs/deploy.md](docs/deploy.md) for a click-by-click guide (Render for the API and database, Vercel for the frontend, about 30 minutes).
+
 ### Retrain the ML models
 ```bash
 docker compose exec api python -m app.ml.train
@@ -111,5 +127,7 @@ The models are trained on a **synthetic dataset** (~5k transactions) generated b
 - [x] Next.js dashboard with live feed, charts and anomaly toasts
 - [x] Payments (Pro plan), verified checkout and signed webhook
 - [x] Subscription detection and Power BI data layer (SQL views, CSV export, build guide)
+- [x] 40 automated tests and a GitHub Actions pipeline (SQLite, PostgreSQL + reversible migrations, frontend build)
+- [x] Production container, Render blueprint and deployment guide
+- [ ] Live demo deployed (follow docs/deploy.md)
 - [ ] Power BI report screenshots
-- [ ] CI (GitHub Actions) and cloud deployment

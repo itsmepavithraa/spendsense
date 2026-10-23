@@ -39,7 +39,7 @@ export default function Dashboard() {
   const [error, setError] = useState("");
 
   const toastId = useRef(0);
-  const summaryTimer = useRef<ReturnType<typeof setTimeout>>();
+  const summaryTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const logout = useCallback(() => {
     clearToken();

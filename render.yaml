@@ -1,0 +1,32 @@
+# Render "Blueprint": describes the backend and its database so they can be created
+# in one click (Render dashboard -> New -> Blueprint -> pick this repository).
+# The frontend is deployed separately on Vercel (see docs/deploy.md).
+databases:
+  - name: spendsense-db
+    databaseName: spendsense
+    user: spendsense
+    plan: free
+
+services:
+  - type: web
+    name: spendsense-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: spendsense-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true            # Render creates a strong random value
+      - key: CORS_ORIGINS
+        sync: false                    # you enter your Vercel URL in the dashboard
+      - key: RAZORPAY_KEY_ID
+        sync: false                    # optional: Razorpay TEST keys
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false

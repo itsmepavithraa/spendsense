@@ -14,7 +14,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import SessionLocal, get_db
 from app.deps import get_current_user
 from app.models import Transaction, User
 from app.realtime import manager, transaction_events
@@ -81,33 +81,36 @@ def list_transactions(
 # NOTE: this route must stay ABOVE "/{txn_id}", or FastAPI would try to parse
 # the word "export" as a transaction id and answer 422.
 @router.get("/export")
-def export_csv(
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
+def export_csv(user: User = Depends(get_current_user)):
     """Download all of the user's transactions as CSV. A Pro-plan feature."""
     if not user.is_pro:
         # 402 Payment Required: the request is fine, the plan isn't
         raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, "CSV export is a Pro feature")
 
+    user_id = user.id  # read now: the request's own DB session is closed before streaming starts
+
     def rows():
+        # The streaming body runs AFTER FastAPI has closed the request's session, so
+        # this generator opens (and always closes) its own. Reusing the closed one
+        # leaked a connection per export, left idle in a transaction holding locks.
         buffer = io.StringIO()
         writer = csv.writer(buffer)
         writer.writerow(["date", "merchant", "category", "amount", "unusual"])
         yield buffer.getvalue()
-        stmt = (
-            select(Transaction)
-            .where(Transaction.user_id == user.id)
-            .order_by(Transaction.occurred_at.desc())
-            .execution_options(yield_per=1000)  # stream in chunks, don't load everything
-        )
-        for t in db.scalars(stmt):
-            buffer.seek(0)
-            buffer.truncate(0)
-            writer.writerow(
-                [t.occurred_at.isoformat(), t.merchant, t.category, t.amount, t.is_anomaly]
+        with SessionLocal() as stream_db:
+            stmt = (
+                select(Transaction)
+                .where(Transaction.user_id == user_id)
+                .order_by(Transaction.occurred_at.desc())
+                .execution_options(yield_per=1000)  # stream in chunks, don't load everything
             )
-            yield buffer.getvalue()
+            for t in stream_db.scalars(stmt):
+                buffer.seek(0)
+                buffer.truncate(0)
+                writer.writerow(
+                    [t.occurred_at.isoformat(), t.merchant, t.category, t.amount, t.is_anomaly]
+                )
+                yield buffer.getvalue()
 
     return StreamingResponse(
         rows(),

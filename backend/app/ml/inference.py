@@ -38,4 +38,6 @@ def is_anomalous(amount: float, category: str) -> bool:
     log_amount = float(np.log1p(amount))
     med, mad = bundle["stats"][category]
     z = (log_amount - med) / (1.4826 * mad)
-    return bool(bundle["model"].predict([[log_amount, z]])[0] == -1)
+    # Isolation Forest flags outliers in BOTH directions. A tiny purchase is not a
+    # problem worth an alert, so only unusually LARGE amounts (z > 0) count.
+    return bool(z > 0 and bundle["model"].predict([[log_amount, z]])[0] == -1)

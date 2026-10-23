@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from tests.conftest import register_and_login
+from tests.conftest import register_and_login, requires_postgres
 
 KEY_SECRET = "test_key_secret"
 WEBHOOK_SECRET = "test_webhook_secret"
@@ -152,6 +152,33 @@ def test_payments_disabled_without_keys(client, monkeypatch):
     monkeypatch.setattr(billing.settings, "razorpay_key_id", "")
     headers = register_and_login(client)
     assert start_order(client, headers).status_code == 503
+
+
+@requires_postgres
+def test_csv_export_does_not_leak_database_connections(client):
+    """Regression test: the streaming export once reused a closed session, leaving a
+    connection 'idle in transaction' (holding locks) after every download."""
+    from sqlalchemy import text
+
+    from app.database import engine
+
+    headers = register_and_login(client)
+    client.post("/transactions", json={"amount": 420, "merchant": "Swiggy"}, headers=headers)
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE users SET is_pro = true"))
+
+    for _ in range(3):
+        assert client.get("/transactions/export", headers=headers).status_code == 200
+
+    with engine.connect() as conn:
+        stuck = conn.execute(
+            text(
+                "SELECT COUNT(*) FROM pg_stat_activity "
+                "WHERE datname = current_database() AND state = 'idle in transaction' "
+                "AND pid <> pg_backend_pid()"
+            )
+        ).scalar()
+    assert stuck == 0
 
 
 def test_csv_export_is_pro_only(client):

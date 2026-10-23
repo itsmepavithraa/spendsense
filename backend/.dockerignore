@@ -1,0 +1,8 @@
+# keep the image small and free of local-only files
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+data/
+tests/
+.env

@@ -11,6 +11,7 @@ python-multipart==0.0.20
 redis==5.2.1
 httpx==0.28.1
 scikit-learn==1.6.1
+numpy==2.2.1
 scipy==1.14.1
 pandas==2.2.3
 joblib==1.4.2

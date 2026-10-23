@@ -60,7 +60,9 @@ def train_anomaly(df: pd.DataFrame) -> None:
     model = IsolationForest(n_estimators=200, contamination=0.02, random_state=42)
     model.fit(X)
 
-    pred = model.predict(X) == -1          # True = flagged as anomaly
+    # Same rule as inference.py: an outlier counts only if the amount is unusually
+    # LARGE for its category (z > 0); X[:, 1] is the per-category z-score.
+    pred = (model.predict(X) == -1) & (X[:, 1] > 0)  # True = flagged as anomaly
     truth = df["is_anomaly"].to_numpy()
     p, r, f1, _ = precision_recall_fscore_support(truth, pred, average="binary", zero_division=0)
     print("=== Anomaly detector (Isolation Forest) ===")
