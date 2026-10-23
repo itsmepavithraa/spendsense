@@ -20,6 +20,16 @@ def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode(), hashed.encode())
 
 
+def decode_access_token(token: str) -> int:
+    """Return the user id inside a valid JWT.
+
+    Raises jwt.PyJWTError (bad signature / expired) or ValueError / KeyError
+    (malformed payload). Shared by the HTTP auth dependency and the WebSocket.
+    """
+    payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+    return int(payload["sub"])
+
+
 def create_access_token(user_id: int) -> str:
     expire = datetime.now(timezone.utc) + timedelta(
         minutes=settings.access_token_expire_minutes

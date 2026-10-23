@@ -5,17 +5,18 @@ and the user comes from the verified JWT, never from the request body. This
 prevents user A from reading user B's data by guessing ids (an IDOR bug).
 On create, the ML models fill in the category and the anomaly flag.
 """
-from datetime import datetime, timezone
+from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.ml.inference import is_anomalous, predict_category
 from app.models import Transaction, User
+from app.realtime import manager, transaction_events
 from app.schemas import TransactionCreate, TransactionOut, TransactionUpdate
+from app.services import create_transaction_for_user
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -35,22 +36,21 @@ def _get_owned_or_404(db: Session, txn_id: int, user: User) -> Transaction:
 @router.post("", response_model=TransactionOut, status_code=status.HTTP_201_CREATED)
 def create_transaction(
     payload: TransactionCreate,
+    background: BackgroundTasks,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    # ML: fill in the category if the client didn't send one, then score the amount
-    category = payload.category or predict_category(payload.merchant)
-    txn = Transaction(
-        user_id=user.id,
-        amount=payload.amount,
-        merchant=payload.merchant,
-        category=category,
-        is_anomaly=is_anomalous(float(payload.amount), category),
-        occurred_at=payload.occurred_at or datetime.now(timezone.utc),
+    txn = create_transaction_for_user(
+        db,
+        user.id,
+        payload.merchant,
+        payload.amount,
+        category=payload.category,
+        occurred_at=payload.occurred_at,
     )
-    db.add(txn)
-    db.commit()
-    db.refresh(txn)
+    # Push to the user's open tabs *after* the response is sent, so a slow or
+    # dead socket can never delay or break the API call itself.
+    background.add_task(manager.send_events, user.id, transaction_events(txn))
     return txn
 
 

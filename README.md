@@ -9,7 +9,9 @@ A real-time personal finance app that **automatically categorizes transactions, 
 - Add, view, edit and delete transactions (each user sees only their own data)
 - **ML auto-categorization:** a merchant name such as "Swiggy" is labelled *Food & Dining* automatically
 - **ML anomaly detection:** an Isolation Forest flags amounts that are unusual for their category
-- *(planned)* live dashboard over WebSockets, subscription detection, Pro plan via Razorpay/Stripe, Power BI analytics
+- **Real-time updates:** a WebSocket (`/ws?token=<JWT>`) pushes `transaction.created` and `anomaly.alert` events to the user's open tabs the moment a transaction is saved. Each user only receives their own events.
+- **Bank-feed simulator:** `POST /simulate/start` streams random transactions (through the same save + ML path) so a demo always has live data; `POST /simulate/stop` ends it.
+- *(planned)* live dashboard UI, subscription detection, Pro plan via Razorpay/Stripe, Power BI analytics
 
 ## Tech stack
 | Layer | Technology |
@@ -32,7 +34,9 @@ backend/
     schemas.py         request / response shapes (Pydantic)
     security.py        bcrypt password hashing and JWT tokens
     deps.py            get_current_user dependency
-    routers/           auth.py, transactions.py
+    services.py        shared "create transaction" logic (ML + save)
+    realtime.py        WebSocket connection manager and event builder
+    routers/           auth.py, transactions.py, ws.py, simulate.py
     ml/                train.py, inference.py, artifacts/ (trained models)
   alembic/             database migrations
   scripts/seed.py      generates ~5k synthetic transactions
@@ -64,7 +68,8 @@ The models are trained on a **synthetic dataset** (~5k transactions) generated b
 ## Roadmap
 - [x] Auth, transaction CRUD, Postgres models, migrations, seed data
 - [x] ML categorizer and anomaly detector wired into the API
-- [ ] Real-time WebSocket feed and live alerts
+- [x] Real-time WebSocket feed, live anomaly alerts and bank-feed simulator
+- [ ] Redis pub/sub so real-time works across multiple API servers
 - [ ] Next.js dashboard
 - [ ] Payments (Pro plan) and webhooks
 - [ ] Power BI analytics
