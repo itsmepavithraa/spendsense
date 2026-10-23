@@ -6,9 +6,23 @@ import AddTransactionForm from "@/components/AddTransactionForm";
 import CategoryDonut from "@/components/CategoryDonut";
 import MonthlyTrend from "@/components/MonthlyTrend";
 import StatCard from "@/components/StatCard";
+import SubscriptionsCard from "@/components/SubscriptionsCard";
 import Toasts, { ToastItem } from "@/components/Toasts";
 import TransactionsTable from "@/components/TransactionsTable";
-import { api, ApiError, clearToken, formatINR, getToken, LiveEvent, Summary, Transaction, User } from "@/lib/api";
+import {
+  api,
+  ApiError,
+  clearToken,
+  downloadCsv,
+  formatINR,
+  getToken,
+  LiveEvent,
+  Subscription,
+  Summary,
+  Transaction,
+  User,
+} from "@/lib/api";
+import { startProCheckout } from "@/lib/razorpay";
 import { useLiveFeed } from "@/lib/useLiveFeed";
 
 const MAX_ROWS = 50;
@@ -18,6 +32,7 @@ export default function Dashboard() {
   const [user, setUser] = useState<User | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [fresh, setFresh] = useState<Set<number>>(new Set()); // rows that just arrived live
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [simulating, setSimulating] = useState(false);
@@ -41,11 +56,13 @@ export default function Dashboard() {
       api<User>("/auth/me"),
       api<Summary>("/analytics/summary"),
       api<Transaction[]>("/transactions?limit=25"),
+      api<Subscription[]>("/analytics/subscriptions"),
     ])
-      .then(([u, s, t]) => {
+      .then(([u, s, t, subs]) => {
         setUser(u);
         setSummary(s);
         setTransactions(t);
+        setSubscriptions(subs);
       })
       .catch((err) => {
         if (err instanceof ApiError && err.status === 401) logout(); // token expired
@@ -79,9 +96,9 @@ export default function Dashboard() {
     [scheduleSummaryRefresh],
   );
 
-  const pushToast = useCallback((message: string) => {
+  const pushToast = useCallback((message: string, kind: ToastItem["kind"] = "anomaly") => {
     const id = ++toastId.current;
-    setToasts((prev) => [...prev, { id, message }]);
+    setToasts((prev) => [...prev, { id, message, kind }]);
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 7000);
   }, []);
 
@@ -90,6 +107,39 @@ export default function Dashboard() {
     if (event.type === "transaction.created") addRow(event.data);
     if (event.type === "anomaly.alert") pushToast(event.data.message);
   });
+
+  // ----- Pro plan -----
+  async function upgrade() {
+    if (!user) return;
+    try {
+      const paid = await startProCheckout(user);
+      if (paid) {
+        setUser(await api<User>("/auth/me")); // is_pro is now true
+        pushToast("You're on the Pro plan. CSV export is unlocked.", "info");
+      }
+    } catch (err) {
+      pushToast(
+        err instanceof ApiError && err.status === 503
+          ? "Payments aren't set up yet. Add your Razorpay test keys to .env."
+          : err instanceof Error
+            ? err.message
+            : "Payment failed",
+        "error",
+      );
+    }
+  }
+
+  async function exportCsv() {
+    if (!user?.is_pro) {
+      pushToast("CSV export is a Pro feature. Upgrade to unlock it.", "info");
+      return upgrade();
+    }
+    try {
+      await downloadCsv();
+    } catch {
+      pushToast("Could not download the CSV", "error");
+    }
+  }
 
   async function toggleSimulator() {
     try {
@@ -135,6 +185,16 @@ export default function Dashboard() {
             <span className={`h-2 w-2 rounded-full ${live ? "animate-pulse bg-good" : "bg-muted"}`} />
             {live ? "Live" : "Reconnecting…"}
           </span>
+          {user.is_pro ? (
+            <span className="rounded-full bg-accent/15 px-3 py-1 text-xs font-semibold text-accent">PRO</span>
+          ) : (
+            <button
+              onClick={upgrade}
+              className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white transition hover:opacity-90"
+            >
+              Upgrade to Pro · ₹199
+            </button>
+          )}
           <button
             onClick={toggleSimulator}
             className={`rounded-lg border px-3 py-1.5 text-sm transition ${
@@ -168,6 +228,11 @@ export default function Dashboard() {
         <MonthlyTrend data={summary.monthly} />
       </section>
 
+      {/* detected subscriptions */}
+      <section className="mt-4">
+        <SubscriptionsCard items={subscriptions} />
+      </section>
+
       {/* add + live feed */}
       <section className="mt-4 rounded-2xl border border-line bg-surface">
         <div className="border-b border-line px-5 py-3">
@@ -177,8 +242,11 @@ export default function Dashboard() {
       </section>
 
       <section className="mt-4 overflow-hidden rounded-2xl border border-line bg-surface">
-        <div className="border-b border-line px-5 py-3">
+        <div className="flex items-center justify-between border-b border-line px-5 py-3">
           <h2 className="text-sm font-medium">Recent transactions</h2>
+          <button onClick={exportCsv} className="text-sm text-accent hover:underline">
+            Export CSV {!user.is_pro && <span className="text-xs text-muted">(Pro)</span>}
+          </button>
         </div>
         <TransactionsTable transactions={transactions} fresh={fresh} />
       </section>

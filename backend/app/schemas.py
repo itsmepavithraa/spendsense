@@ -31,6 +31,24 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
+# ---------- Billing ----------
+class OrderOut(BaseModel):
+    """What the browser needs to open Razorpay Checkout."""
+
+    order_id: str
+    key_id: str  # the PUBLIC key id; the secret never leaves the server
+    amount: int  # paise
+    currency: str
+
+
+class VerifyPaymentIn(BaseModel):
+    """The three values Razorpay Checkout hands back after a successful payment."""
+
+    razorpay_order_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str
+
+
 # ---------- Transactions ----------
 class TransactionCreate(BaseModel):
     amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)

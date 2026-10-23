@@ -4,6 +4,7 @@ Run:  docker compose exec api python -m scripts.seed
 """
 import csv
 import random
+import secrets
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -11,13 +12,14 @@ from pathlib import Path
 from sqlalchemy import delete, select
 
 from app.database import SessionLocal
-from app.models import Transaction, User
+from app.models import Payment, Transaction, User
 from app.security import hash_password
 
 DEMO_EMAIL = "demo@spendsense.com"
 DEMO_PASSWORD = "demo12345"
 N_TRANSACTIONS = 4900          # + recurring subscriptions ~ 5k total
 ANOMALY_RATE = 0.02
+SYNTHETIC_USERS = 60            # fake sign-ups for the business dashboard
 DAYS = 365
 
 # category -> (merchants, min_amount, max_amount, sampling weight)
@@ -97,6 +99,43 @@ def build_rows(user_id: int) -> list[dict]:
     return rows
 
 
+def seed_business_data(db) -> None:
+    """Synthetic sign-ups and Pro purchases, so the Power BI 'business' page
+    (revenue, conversion) has data. These users are fake: nobody can log in as
+    them, and their order ids are obviously synthetic."""
+    db.execute(delete(User).where(User.email.like("synthetic%@example.com")))
+    db.commit()  # FK cascades also remove their payments
+
+    now = datetime.now(timezone.utc)
+    unusable_password = hash_password(secrets.token_urlsafe(16))
+    for i in range(1, SYNTHETIC_USERS + 1):
+        signup = now - timedelta(days=random.randint(1, 365), hours=random.randint(0, 23))
+        is_pro = random.random() < 0.35  # ~35% of sign-ups convert
+        user = User(
+            email=f"synthetic{i}@example.com",
+            full_name=f"Synthetic User {i}",
+            hashed_password=unusable_password,
+            is_pro=is_pro,
+            created_at=signup,
+        )
+        db.add(user)
+        db.flush()  # get user.id
+        if is_pro:
+            paid_at = min(now, signup + timedelta(days=random.randint(0, 40)))
+            db.add(Payment(
+                user_id=user.id, razorpay_order_id=f"order_synthetic_{i}",
+                razorpay_payment_id=f"pay_synthetic_{i}", amount_paise=19900,
+                status="paid", created_at=paid_at - timedelta(minutes=3), paid_at=paid_at,
+            ))
+        elif random.random() < 0.15:  # an abandoned checkout
+            db.add(Payment(
+                user_id=user.id, razorpay_order_id=f"order_synthetic_{i}",
+                amount_paise=19900, status="created",
+                created_at=signup + timedelta(days=random.randint(0, 20)),
+            ))
+    db.commit()
+
+
 def main() -> None:
     random.seed(42)  # reproducible dataset
     db = SessionLocal()
@@ -127,7 +166,10 @@ def main() -> None:
             for r in rows:
                 writer.writerow({k: r[k] for k in writer.fieldnames})
 
+        seed_business_data(db)
+
         print(f"Seeded {len(rows)} transactions for {DEMO_EMAIL} (password: {DEMO_PASSWORD})")
+        print(f"Seeded {SYNTHETIC_USERS} synthetic users with Pro purchases for the business dashboard")
     finally:
         db.close()
 

@@ -10,7 +10,7 @@ Design notes:
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Index, Numeric, String, false, func
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, Numeric, String, false, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -31,6 +31,31 @@ class User(Base):
     transactions: Mapped[list["Transaction"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+
+
+class Payment(Base):
+    """One row per attempt to buy the Pro plan.
+
+    Lifecycle: created (we asked Razorpay for an order) -> paid (signature
+    verified, by the browser callback or by the webhook, whichever arrives first).
+    """
+
+    __tablename__ = "payments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    # unique: an order can only ever belong to one payment row
+    razorpay_order_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    razorpay_payment_id: Mapped[str | None] = mapped_column(String(64))
+    amount_paise: Mapped[int] = mapped_column(Integer)
+    currency: Mapped[str] = mapped_column(String(3), default="INR")
+    status: Mapped[str] = mapped_column(String(20), default="created")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Transaction(Base):

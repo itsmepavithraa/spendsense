@@ -12,7 +12,9 @@ A real-time personal finance app that **automatically categorizes transactions, 
 - **Real-time updates:** a WebSocket (`/ws?token=<JWT>`) pushes `transaction.created` and `anomaly.alert` events to the user's open tabs the moment a transaction is saved. Each user only receives their own events.
 - **Bank-feed simulator:** `POST /simulate/start` streams random transactions (through the same save + ML path) so a demo always has live data; `POST /simulate/stop` ends it.
 - **Live dashboard (Next.js):** login/register, headline stats, spend-by-category donut, monthly trend, an add-transaction form, and a transaction table where new rows appear instantly with a toast alert for unusual charges.
-- *(planned)* subscription detection, Pro plan via Razorpay/Stripe, Power BI analytics
+- **Subscription detection:** a SQL view finds charges with the same merchant and amount about every month (consistent gaps, 3+ charges) and the dashboard shows the monthly and yearly cost.
+- **Pro plan payments (Razorpay, test mode):** the server creates the order and sets the price, Razorpay Checkout takes payment, and the server verifies the HMAC signature before upgrading the user. A signed webhook is the safety net if the browser never calls back; both paths are idempotent. CSV export is the Pro-only feature.
+- **Power BI analytics:** five analysis-ready SQL views (`bi_*`) feed a 4-page report. See [docs/powerbi.md](docs/powerbi.md) for the data model, DAX measures and page layouts.
 
 ## Tech stack
 | Layer | Technology |
@@ -23,8 +25,11 @@ A real-time personal finance app that **automatically categorizes transactions, 
 | ML | scikit-learn (TF-IDF + Logistic Regression, Isolation Forest) |
 | Real-time | WebSockets (FastAPI) |
 | Frontend | Next.js 14 (App Router), TypeScript, Tailwind CSS, Recharts |
+| Payments | Razorpay (test mode), HMAC-verified checkout and webhook |
+| Analytics | SQL views + Power BI |
 | Containers | Docker, Docker Compose |
-| *Planned* | Razorpay/Stripe, Power BI, cloud deployment, GitHub Actions CI |
+| Tests | pytest |
+| *Planned* | Cloud deployment, GitHub Actions CI |
 
 ## Project layout
 ```
@@ -39,10 +44,13 @@ backend/
     deps.py            get_current_user dependency
     services.py        shared "create transaction" logic (ML + save)
     realtime.py        WebSocket connection manager and event builder
-    routers/           auth.py, transactions.py, analytics.py, ws.py, simulate.py
+    routers/           auth.py, transactions.py, analytics.py, billing.py, ws.py, simulate.py
     ml/                train.py, inference.py, artifacts/ (trained models)
-  alembic/             database migrations
-  scripts/seed.py      generates ~5k synthetic transactions
+  alembic/             database migrations (tables, payments, BI views)
+  scripts/seed.py      synthetic transactions + fake sign-ups/purchases
+  scripts/export_bi_csv.py   dumps the BI views to CSV for Power BI
+  tests/               pytest suite (payments, signatures, Pro gating)
+docs/powerbi.md        Power BI build guide
 frontend/
   app/                 pages: /login and /dashboard
   components/          stat cards, charts, transaction table, add form, toasts
@@ -71,6 +79,22 @@ docker-compose.yml     Postgres + Redis + API
    ```
    Open http://localhost:3000, log in with the demo account and click **Simulate bank feed** to watch transactions arrive live.
 
+### Turn on payments (optional)
+1. Create a free Razorpay account and switch the dashboard to **Test Mode**.
+2. **Account & Settings → API Keys → Generate Test Key**. Put the key id and secret in `.env` as `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET`, then `docker compose up -d api`.
+3. Click **Upgrade to Pro** and pay with Razorpay's test card from their docs. Never use real card details in test mode.
+4. For the webhook, expose the API with a tunnel (for example ngrok), add `https://<tunnel>/billing/webhook` under **Settings → Webhooks** with events `payment.captured` and `order.paid`, and set `RAZORPAY_WEBHOOK_SECRET` to the secret you chose there.
+
+Without keys the app still runs; billing endpoints answer `503` and the UI explains why.
+
+### Run the tests
+```bash
+cd backend
+pip install -r requirements-dev.txt
+python -m pytest tests -q
+```
+The tests use SQLite and a fake Razorpay (no Docker or internet needed), but they exercise the real signature checks.
+
 ### Retrain the ML models
 ```bash
 docker compose exec api python -m app.ml.train
@@ -85,6 +109,7 @@ The models are trained on a **synthetic dataset** (~5k transactions) generated b
 - [x] Real-time WebSocket feed, live anomaly alerts and bank-feed simulator
 - [ ] Redis pub/sub so real-time works across multiple API servers
 - [x] Next.js dashboard with live feed, charts and anomaly toasts
-- [ ] Payments (Pro plan) and webhooks
-- [ ] Power BI analytics
-- [ ] Tests, CI/CD and cloud deployment
+- [x] Payments (Pro plan), verified checkout and signed webhook
+- [x] Subscription detection and Power BI data layer (SQL views, CSV export, build guide)
+- [ ] Power BI report screenshots
+- [ ] CI (GitHub Actions) and cloud deployment

@@ -37,6 +37,15 @@ export interface Summary {
   monthly: { month: string; total: number }[];
 }
 
+export interface Subscription {
+  merchant: string;
+  amount: number;
+  charges: number;
+  avg_gap_days: number;
+  last_charge: string;
+  yearly_cost: number;
+}
+
 // events pushed by the server over the WebSocket
 export type LiveEvent =
   | { type: "connected"; data: { user_id: number } }
@@ -87,6 +96,23 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
+}
+
+/** Download the user's transactions as a CSV file (Pro plan). */
+export async function downloadCsv(): Promise<void> {
+  const res = await fetch(`${API_URL}/transactions/export`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status, res.status === 402 ? "CSV export is a Pro feature" : res.statusText);
+  }
+  // turn the response into a file and click a temporary link to save it
+  const url = URL.createObjectURL(await res.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "spendsense-transactions.csv";
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 // ---------- formatting helpers ----------

@@ -5,9 +5,12 @@ and the user comes from the verified JWT, never from the request body. This
 prevents user A from reading user B's data by guessing ids (an IDOR bug).
 On create, the ML models fill in the category and the anomaly flag.
 """
+import csv
+import io
 from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -73,6 +76,44 @@ def list_transactions(
         stmt = stmt.where(Transaction.occurred_at <= end)
     stmt = stmt.order_by(Transaction.occurred_at.desc()).limit(limit).offset(offset)
     return db.scalars(stmt).all()
+
+
+# NOTE: this route must stay ABOVE "/{txn_id}", or FastAPI would try to parse
+# the word "export" as a transaction id and answer 422.
+@router.get("/export")
+def export_csv(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Download all of the user's transactions as CSV. A Pro-plan feature."""
+    if not user.is_pro:
+        # 402 Payment Required: the request is fine, the plan isn't
+        raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, "CSV export is a Pro feature")
+
+    def rows():
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(["date", "merchant", "category", "amount", "unusual"])
+        yield buffer.getvalue()
+        stmt = (
+            select(Transaction)
+            .where(Transaction.user_id == user.id)
+            .order_by(Transaction.occurred_at.desc())
+            .execution_options(yield_per=1000)  # stream in chunks, don't load everything
+        )
+        for t in db.scalars(stmt):
+            buffer.seek(0)
+            buffer.truncate(0)
+            writer.writerow(
+                [t.occurred_at.isoformat(), t.merchant, t.category, t.amount, t.is_anomaly]
+            )
+            yield buffer.getvalue()
+
+    return StreamingResponse(
+        rows(),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="spendsense-transactions.csv"'},
+    )
 
 
 @router.get("/{txn_id}", response_model=TransactionOut)

@@ -7,7 +7,7 @@ the logged-in user.
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import Integer, cast, extract, func, select
+from sqlalchemy import Integer, cast, extract, func, select, text
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -15,6 +15,30 @@ from app.deps import get_current_user
 from app.models import Transaction, User
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
+
+
+@router.get("/subscriptions")
+def subscriptions(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Recurring monthly charges, detected by the bi_subscriptions SQL view
+    (see the migration for the detection rules)."""
+    rows = db.execute(
+        text(
+            "SELECT merchant, amount, charges, avg_gap_days, last_charge, yearly_cost "
+            "FROM bi_subscriptions WHERE user_id = :uid ORDER BY yearly_cost DESC"
+        ),
+        {"uid": user.id},  # bound parameter: never build SQL by string concatenation
+    ).mappings()
+    return [
+        {
+            "merchant": r["merchant"],
+            "amount": r["amount"],
+            "charges": r["charges"],
+            "avg_gap_days": r["avg_gap_days"],
+            "last_charge": r["last_charge"].isoformat(),
+            "yearly_cost": r["yearly_cost"],
+        }
+        for r in rows
+    ]
 
 
 @router.get("/summary")

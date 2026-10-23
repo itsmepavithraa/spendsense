@@ -15,6 +15,13 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60
     algorithm: str = "HS256"
 
+    # Razorpay (payments). Empty = payments disabled; the API then answers 503
+    # on billing endpoints instead of crashing. Use TEST-mode keys while developing.
+    razorpay_key_id: str = ""
+    razorpay_key_secret: str = ""
+    razorpay_webhook_secret: str = ""
+    pro_price_paise: int = 19900  # amounts are in paise: 19900 paise = ₹199
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
