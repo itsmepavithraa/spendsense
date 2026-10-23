@@ -1,6 +1,7 @@
 """Generate ~5k realistic synthetic transactions for a demo user.
 
 Run:  docker compose exec api python -m scripts.seed
+      docker compose exec api python -m scripts.seed --if-empty   (skip if already seeded)
 """
 import csv
 import random
@@ -103,8 +104,12 @@ def seed_business_data(db) -> None:
     """Synthetic sign-ups and Pro purchases, so the Power BI 'business' page
     (revenue, conversion) has data. These users are fake: nobody can log in as
     them, and their order ids are obviously synthetic."""
-    db.execute(delete(User).where(User.email.like("synthetic%@example.com")))
-    db.commit()  # FK cascades also remove their payments
+    synthetic_ids = select(User.id).where(User.email.like("synthetic%@example.com"))
+    # delete their payments explicitly instead of relying on ON DELETE CASCADE,
+    # which PostgreSQL enforces but SQLite does not
+    db.execute(delete(Payment).where(Payment.user_id.in_(synthetic_ids)))
+    db.execute(delete(User).where(User.id.in_(synthetic_ids)))
+    db.commit()
 
     now = datetime.now(timezone.utc)
     unusable_password = hash_password(secrets.token_urlsafe(16))
@@ -136,11 +141,22 @@ def seed_business_data(db) -> None:
     db.commit()
 
 
-def main() -> None:
+def main(if_empty: bool = False) -> None:
+    """Seed the demo data.
+
+    With if_empty=True nothing happens when the demo user already has data. The
+    production container uses this on every start, so a restart never wipes or
+    duplicates the demo account.
+    """
     random.seed(42)  # reproducible dataset
     db = SessionLocal()
     try:
         user = db.scalar(select(User).where(User.email == DEMO_EMAIL))
+        if if_empty and user is not None and db.scalar(
+            select(Transaction.id).where(Transaction.user_id == user.id).limit(1)
+        ):
+            print("Demo data already present, skipping seed.")
+            return
         if user is None:
             user = User(
                 email=DEMO_EMAIL,
@@ -175,4 +191,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+
+    main(if_empty="--if-empty" in sys.argv)

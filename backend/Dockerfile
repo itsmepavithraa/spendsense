@@ -10,7 +10,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Production start: apply any pending database migrations, then serve the API.
-# Cloud hosts tell us which port to use through $PORT (default 8000).
+# Production start:
+#   1. apply any pending database migrations
+#   2. if SEED_DEMO_DATA=true, load the demo account (skipped when it already exists)
+#   3. serve the API on $PORT (cloud hosts set it; default 8000)
 # docker-compose overrides this with a --reload command for local development.
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "-c", "alembic upgrade head && if [ \"$SEED_DEMO_DATA\" = \"true\" ]; then python -m scripts.seed --if-empty; fi && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

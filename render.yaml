@@ -22,6 +22,8 @@ services:
           property: connectionString
       - key: SECRET_KEY
         generateValue: true            # Render creates a strong random value
+      - key: SEED_DEMO_DATA
+        value: "true"                  # loads the demo account on start, only if it doesn't exist yet
       - key: CORS_ORIGINS
         sync: false                    # you enter your Vercel URL in the dashboard
       - key: RAZORPAY_KEY_ID
