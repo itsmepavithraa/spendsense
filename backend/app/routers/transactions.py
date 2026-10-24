@@ -11,7 +11,7 @@ from collections import Counter
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, Response, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
@@ -25,6 +25,7 @@ from app.ml.inference import UNCATEGORIZED, anomaly_flags, predict_categories
 from app.models import Transaction, User
 from app.ratelimit import limit_by_address
 from app.realtime import manager, transaction_events
+from app.spreadsheet import is_spreadsheet, spreadsheet_to_csv
 from app.schemas import (
     ImportPreviewRow,
     ImportResult,
@@ -85,10 +86,12 @@ def create_transaction(
 def import_statement(
     background: BackgroundTasks,
     file: UploadFile = File(...),
+    password: str | None = Form(None),  # only for locked Excel files; never stored or logged
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Import a bank statement CSV: spending rows only, categorised and scored by the models.
+    """Import a bank statement (CSV, or Excel with an optional password): spending rows only,
+    categorised and scored by the models.
 
     Safe to repeat: rows already in the account are skipped, so uploading the same
     statement twice (or an overlapping one) never creates duplicates.
@@ -97,6 +100,8 @@ def import_statement(
     if len(content) > MAX_FILE_BYTES:
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "File is too large (limit 2 MB)")
     try:
+        if is_spreadsheet(content):
+            content = spreadsheet_to_csv(content, password)
         parsed = parse_statement(content)
     except StatementError as error:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error))

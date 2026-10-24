@@ -18,10 +18,11 @@ export default function ImportStatement({ onImported, demo = false }: Props) {
   const [error, setError] = useState("");
   const [result, setResult] = useState<ImportResult | null>(null);
 
-  async function choose(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = ""; // lets the same file be picked again later
-    if (!file) return;
+  // a locked Excel file waits here until the user types its password
+  const [locked, setLocked] = useState<File | null>(null);
+  const [password, setPassword] = useState("");
+
+  async function upload(file: File, pass?: string) {
     setError("");
     setResult(null);
     if (file.size > MAX_BYTES) {
@@ -32,33 +33,54 @@ export default function ImportStatement({ onImported, demo = false }: Props) {
     try {
       const formData = new FormData();
       formData.append("file", file);
+      if (pass) formData.append("password", pass);
       const summary = await api<ImportResult>("/transactions/import", { method: "POST", formData });
       setResult(summary);
+      setLocked(null);
+      setPassword("");
       onImported(summary);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not upload the file. Is the API running?");
+      const message = err instanceof ApiError ? err.message : "Could not upload the file. Is the API running?";
+      if (message.includes("password")) {
+        setLocked(file); // ask for the password instead of failing
+        if (pass) setError(message);
+      } else {
+        setLocked(null);
+        setError(message);
+      }
     } finally {
       setBusy(false);
+    }
+  }
+
+  function choose(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // lets the same file be picked again later
+    if (file) {
+      setLocked(null);
+      setPassword("");
+      upload(file);
     }
   }
 
   return (
     <div className="p-5">
       <div className="flex flex-wrap items-center gap-3">
-        <input ref={fileInput} type="file" accept=".csv,text/csv" onChange={choose} className="hidden" />
+        <input ref={fileInput} type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={choose} className="hidden" />
         <button
           onClick={() => fileInput.current?.click()}
           disabled={busy}
           className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
         >
-          {busy ? "Importing…" : "Choose a CSV file"}
+          {busy ? "Importing…" : "Choose a statement file"}
         </button>
         <a href="/sample-statement.csv" download className="text-sm text-accent hover:underline">
           Download a sample statement
         </a>
       </div>
       <p className="mt-3 max-w-2xl text-xs text-muted">
-        Works with the CSV export from most Indian banks (not PDF). Only spending is imported (deposits are skipped),
+        Works with CSV or Excel (.xlsx) statements, including password-protected ones; the password is used once to
+        open the file and is never stored. PDF isn&apos;t supported yet. Only spending is imported (deposits are skipped),
         and uploading the same statement twice never creates duplicates.{" "}
         {demo ? (
           <strong>This is the shared demo account, so upload only the sample file here. Create your own account to use a real statement.</strong>
@@ -73,6 +95,30 @@ export default function ImportStatement({ onImported, demo = false }: Props) {
           </>
         )}
       </p>
+
+      {locked && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            upload(locked, password);
+          }}
+          className="mt-3 flex flex-wrap items-center gap-2"
+        >
+          <span className="text-sm">{locked.name} is password-protected.</span>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="File password"
+            autoComplete="off"
+            required
+            className="rounded-lg border border-line bg-page px-3 py-1.5 text-sm outline-none focus:border-accent"
+          />
+          <button disabled={busy} className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60">
+            Unlock and import
+          </button>
+        </form>
+      )}
 
       {error && <p className="mt-3 text-sm text-danger">{error}</p>}
 

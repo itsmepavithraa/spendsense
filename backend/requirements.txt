@@ -15,3 +15,5 @@ numpy==2.2.1
 scipy==1.14.1
 pandas==2.2.3
 joblib==1.4.2
+openpyxl==3.1.5
+msoffcrypto-tool==6.0.0
