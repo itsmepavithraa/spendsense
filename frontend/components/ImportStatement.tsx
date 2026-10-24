@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { ChangeEvent, useRef, useState } from "react";
 import { api, ApiError, categoryColor, formatINRExact, ImportResult } from "@/lib/api";
 
@@ -7,10 +8,11 @@ const MAX_BYTES = 2 * 1024 * 1024;
 
 interface Props {
   onImported: (result: ImportResult) => void;
+  demo?: boolean; // the shared demo account: upload the sample file, not a real statement
 }
 
 // Upload a bank statement CSV. The server does the work; this shows exactly what happened.
-export default function ImportStatement({ onImported }: Props) {
+export default function ImportStatement({ onImported, demo = false }: Props) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -56,9 +58,20 @@ export default function ImportStatement({ onImported }: Props) {
         </a>
       </div>
       <p className="mt-3 max-w-2xl text-xs text-muted">
-        Works with the CSV export from most Indian banks. Only spending is imported (deposits are skipped),
-        and uploading the same statement twice never creates duplicates. This is a shared demo: use the
-        sample file here, and keep real statements for a copy you run yourself.
+        Works with the CSV export from most Indian banks (not PDF). Only spending is imported (deposits are skipped),
+        and uploading the same statement twice never creates duplicates.{" "}
+        {demo ? (
+          <strong>This is the shared demo account, so upload only the sample file here. Create your own account to use a real statement.</strong>
+        ) : (
+          <>
+            Only the date, shop name, amount and category of each payment are stored; the file itself is not kept.
+            You can delete everything any time from Account. See the{" "}
+            <Link href="/privacy" className="text-accent hover:underline">
+              privacy notice
+            </Link>
+            .
+          </>
+        )}
       </p>
 
       {error && <p className="mt-3 text-sm text-danger">{error}</p>}

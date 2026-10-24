@@ -27,6 +27,23 @@ class Settings(BaseSettings):
     razorpay_webhook_secret: str = ""
     pro_price_paise: int = 19900  # amounts are in paise: 19900 paise = ₹199
 
+    # ---- running as a public service ---------------------------------------------
+    # Switch sign-ups off instantly (for example if the site is being abused).
+    allow_registration: bool = True
+    # Stop accepting sign-ups beyond this many accounts, to protect a small free database.
+    # 0 means no limit.
+    max_users: int = 0
+    # Each account may store at most this many transactions (stops one user filling the database).
+    max_transactions_per_user: int = 50_000
+    # Behind a hosting proxy (Render, Vercel) the real visitor address arrives in the
+    # X-Forwarded-For header. Turn this on ONLY when such a proxy sits in front of the API,
+    # otherwise anyone could fake their address and dodge the rate limits.
+    trust_proxy: bool = False
+    rate_limit_enabled: bool = True
+    password_blocklist_enabled: bool = True  # refuse the most common passwords at sign-up
+    # The public demo login. It is allowed to use demo-only tools such as the bank-feed simulator.
+    demo_email: str = "demo@spendsense.com"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @field_validator("database_url")
@@ -38,6 +55,10 @@ class Settings(BaseSettings):
             if url.startswith(prefix):
                 return "postgresql+psycopg2://" + url[len(prefix):]
         return url
+
+    @property
+    def payments_enabled(self) -> bool:
+        return bool(self.razorpay_key_id and self.razorpay_key_secret)
 
     @property
     def cors_origin_list(self) -> list[str]:

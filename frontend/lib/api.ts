@@ -166,6 +166,33 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   return res.json() as Promise<T>;
 }
 
+/** What the site has switched on (public, no login needed). */
+export interface PublicConfig {
+  registration_open: boolean;
+  payments_enabled: boolean;
+  demo_email: string;
+  max_transactions_per_user: number;
+}
+
+export const fetchConfig = () => api<PublicConfig>("/config");
+
+/** Save a response as a file the user can keep. */
+async function saveAs(res: Response, filename: string): Promise<void> {
+  const url = URL.createObjectURL(await res.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+/** Download everything the app stores about the logged-in user, as one JSON file. */
+export async function downloadMyData(): Promise<void> {
+  const res = await fetch(`${API_URL}/auth/me/export`, { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (!res.ok) throw new ApiError(res.status, res.statusText);
+  await saveAs(res, "spendsense-my-data.json");
+}
+
 /** Download the user's transactions as a CSV file (Pro plan). */
 export async function downloadCsv(): Promise<void> {
   const res = await fetch(`${API_URL}/transactions/export`, {

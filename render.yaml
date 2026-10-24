@@ -24,6 +24,12 @@ services:
         generateValue: true            # Render creates a strong random value
       - key: SEED_DEMO_DATA
         value: "true"                  # loads the demo account on start, only if it doesn't exist yet
+      - key: TRUST_PROXY
+        value: "true"                  # Render's proxy sets X-Forwarded-For; needed for per-visitor rate limits
+      - key: ALLOW_REGISTRATION
+        value: "true"                  # set to "false" to close sign-ups instantly if abused
+      - key: MAX_USERS
+        value: "400"                   # cap on accounts so the free database can't fill up (0 = no cap)
       - key: CORS_ORIGINS
         sync: false                    # you enter your Vercel URL in the dashboard
       - key: RAZORPAY_KEY_ID

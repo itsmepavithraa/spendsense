@@ -19,9 +19,11 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal, get_db
 from app.deps import get_current_user
 from app.categories import merchant_key
+from app.config import settings
 from app.importer import MAX_FILE_BYTES, StatementError, parse_statement
 from app.ml.inference import UNCATEGORIZED, anomaly_flags, predict_categories
 from app.models import Transaction, User
+from app.ratelimit import limit_by_address
 from app.realtime import manager, transaction_events
 from app.schemas import (
     ImportPreviewRow,
@@ -30,7 +32,7 @@ from app.schemas import (
     TransactionOut,
     TransactionUpdate,
 )
-from app.services import create_transaction_for_user, load_overrides
+from app.services import create_transaction_for_user, ensure_room, load_overrides
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -75,7 +77,11 @@ def create_transaction(
     return txn
 
 
-@router.post("/import", response_model=ImportResult)
+@router.post(
+    "/import",
+    response_model=ImportResult,
+    dependencies=[limit_by_address("import", limit=30, window=3600)],  # parsing + ML is the costliest call
+)
 def import_statement(
     background: BackgroundTasks,
     file: UploadFile = File(...),
@@ -126,6 +132,8 @@ def import_statement(
             duplicates += 1
         else:
             fresh.append(row)
+
+    ensure_room(db, user.id, len(fresh))  # all or nothing: never a half-imported statement
 
     # one batch call each for the models: far faster than scoring row by row
     categories = predict_categories([r.merchant for r in fresh])
@@ -204,7 +212,9 @@ def list_transactions(
 @router.get("/export")
 def export_csv(user: User = Depends(get_current_user)):
     """Download all of the user's transactions as CSV. A Pro-plan feature."""
-    if not user.is_pro:
+    # Pro-only while payments exist. If payments are switched off nobody could ever unlock it,
+    # so it is simply free for everyone. (Users can always download all their data from Account.)
+    if settings.payments_enabled and not user.is_pro:
         # 402 Payment Required: the request is fine, the plan isn't
         raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, "CSV export is a Pro feature")
 

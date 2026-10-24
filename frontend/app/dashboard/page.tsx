@@ -17,9 +17,11 @@ import {
   ApiError,
   clearToken,
   downloadCsv,
+  fetchConfig,
   formatINR,
   getToken,
   LiveEvent,
+  PublicConfig,
   Subscription,
   Summary,
   Transaction,
@@ -38,6 +40,7 @@ export default function Dashboard() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [uncategorized, setUncategorized] = useState<UncategorizedMerchant[]>([]);
+  const [config, setConfig] = useState<PublicConfig | null>(null);
   const [fresh, setFresh] = useState<Set<number>>(new Set()); // rows that just arrived live
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [simulating, setSimulating] = useState(false);
@@ -57,6 +60,7 @@ export default function Dashboard() {
       router.replace("/login");
       return;
     }
+    fetchConfig().then(setConfig).catch(() => {});
     Promise.all([
       api<User>("/auth/me"),
       api<Summary>("/analytics/summary"),
@@ -180,7 +184,7 @@ export default function Dashboard() {
   }
 
   async function exportCsv() {
-    if (!user?.is_pro) {
+    if (config?.payments_enabled && !user?.is_pro) {
       pushToast("CSV export is a Pro feature. Upgrade to unlock it.", "info");
       return upgrade();
     }
@@ -213,6 +217,7 @@ export default function Dashboard() {
   if (!user || !summary) {
     return <p className="p-8 text-center text-muted">Loading your dashboard…</p>;
   }
+  const isDemo = user.email === config?.demo_email;
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6">
@@ -244,21 +249,30 @@ export default function Dashboard() {
           {user.is_pro ? (
             <span className="rounded-full bg-accent/15 px-3 py-1 text-xs font-semibold text-accent">PRO</span>
           ) : (
+            // the paid plan is only offered when payments are actually switched on
+            config?.payments_enabled && (
+              <button
+                onClick={upgrade}
+                className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white transition hover:opacity-90"
+              >
+                Upgrade to Pro · ₹199
+              </button>
+            )
+          )}
+          {/* the fake bank feed is a demo tool: real users upload real statements instead */}
+          {isDemo && (
             <button
-              onClick={upgrade}
-              className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white transition hover:opacity-90"
+              onClick={toggleSimulator}
+              className={`rounded-lg border px-3 py-1.5 text-sm transition ${
+                simulating ? "border-danger text-danger" : "border-line hover:border-accent"
+              }`}
             >
-              Upgrade to Pro · ₹199
+              {simulating ? "Stop bank feed" : "Simulate bank feed"}
             </button>
           )}
-          <button
-            onClick={toggleSimulator}
-            className={`rounded-lg border px-3 py-1.5 text-sm transition ${
-              simulating ? "border-danger text-danger" : "border-line hover:border-accent"
-            }`}
-          >
-            {simulating ? "Stop bank feed" : "Simulate bank feed"}
-          </button>
+          <Link href="/account" className="text-sm text-muted hover:text-ink">
+            Account
+          </Link>
           <button onClick={logout} className="text-sm text-muted hover:text-ink">
             Log out
           </button>
@@ -304,14 +318,14 @@ export default function Dashboard() {
         <div className="border-b border-line px-5 py-3">
           <h2 className="text-sm font-medium">Import a bank statement</h2>
         </div>
-        <ImportStatement onImported={refreshAll} />
+        <ImportStatement onImported={refreshAll} demo={isDemo} />
       </section>
 
       <section className="mt-4 overflow-hidden rounded-2xl border border-line bg-surface">
         <div className="flex items-center justify-between border-b border-line px-5 py-3">
           <h2 className="text-sm font-medium">Recent transactions</h2>
           <button onClick={exportCsv} className="text-sm text-accent hover:underline">
-            Export CSV {!user.is_pro && <span className="text-xs text-muted">(Pro)</span>}
+            Export CSV {config?.payments_enabled && !user.is_pro && <span className="text-xs text-muted">(Pro)</span>}
           </button>
         </div>
         <TransactionsTable transactions={transactions} fresh={fresh} onRecategorize={recategorize} />

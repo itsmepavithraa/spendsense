@@ -6,12 +6,29 @@ same ML behaviour (auto-category + anomaly flag) and can't drift apart.
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import select
+from fastapi import HTTPException, status
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.categories import merchant_key
+from app.config import settings
 from app.ml.inference import is_anomalous, predict_category
 from app.models import CategoryOverride, Transaction
+
+
+def ensure_room(db: Session, user_id: int, adding: int) -> None:
+    """Refuse to store more than MAX_TRANSACTIONS_PER_USER per account, so one account can't
+    fill a small shared database."""
+    cap = settings.max_transactions_per_user
+    if not cap:
+        return
+    stored = db.scalar(select(func.count(Transaction.id)).where(Transaction.user_id == user_id)) or 0
+    if stored + adding > cap:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            f"Account limit reached: at most {cap:,} transactions per account "
+            f"(you have {stored:,}). Delete your account data or import a shorter date range.",
+        )
 
 
 def load_overrides(db: Session, user_id: int) -> dict[str, str]:
@@ -33,6 +50,7 @@ def create_transaction_for_user(
     category: str | None = None,
     occurred_at: datetime | None = None,
 ) -> Transaction:
+    ensure_room(db, user_id, 1)
     # Category, strongest first: what the caller chose, what the user taught us earlier,
     # then keyword rules and the ML model. Then score the amount for that category.
     category = (

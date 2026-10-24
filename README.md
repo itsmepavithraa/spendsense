@@ -62,6 +62,7 @@ backend/
   tests/               pytest suite: auth, isolation, ML, WebSockets, payments, analytics
 docs/powerbi.md        Power BI build guide
 docs/deploy.md         step-by-step deployment (Render + Vercel)
+docs/going-public.md   checklist for running it as a public service
 render.yaml            Render blueprint (API + PostgreSQL)
 .github/workflows/     CI pipeline
 frontend/
@@ -118,6 +119,8 @@ CI does exactly this on every push, and also checks that the migrations can be r
 
 ### Deploy it
 See [docs/deploy.md](docs/deploy.md) for a click-by-click guide (Render for the API and database, Vercel for the frontend, about 30 minutes).
+
+Opening it to the public (anyone signs up and uploads a statement)? Read [docs/going-public.md](docs/going-public.md) first: sign-up limits, privacy controls, and the free-database expiry you must handle.
 
 ### Retrain the ML models
 ```bash

@@ -22,6 +22,10 @@ os.environ["SECRET_KEY"] = "test-secret"
 os.environ["RAZORPAY_KEY_ID"] = "rzp_test_key"
 os.environ["RAZORPAY_KEY_SECRET"] = "test_key_secret"
 os.environ["RAZORPAY_WEBHOOK_SECRET"] = "test_webhook_secret"
+# Most tests register and log in dozens of times from one address: switch the abuse
+# protection off for them. The dedicated safeguard tests switch it back on explicitly.
+os.environ["RATE_LIMIT_ENABLED"] = "false"
+os.environ["PASSWORD_BLOCKLIST_ENABLED"] = "false"
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # make `import app` work
 
@@ -41,7 +45,9 @@ requires_postgres = pytest.mark.skipif(
 def client():
     from app.database import Base, engine
     from app.main import app
+    from app.ratelimit import reset_all
 
+    reset_all()  # every test starts with clean rate-limit counters
     if IS_POSTGRES:
         # tables and views come from the Alembic migrations; just empty the data
         with engine.begin() as conn:
