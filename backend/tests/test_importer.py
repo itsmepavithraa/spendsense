@@ -147,6 +147,48 @@ def test_bank_text_is_reduced_to_a_merchant_name(narration, merchant):
     assert clean_merchant(narration) == merchant
 
 
+# ----------------------------------------- a statement laid out like KVB's (invented rows)
+KVB_STYLE = "\n".join(
+    [
+        "Transaction Date\tValue Date\tParticulars\tRef.No.\tDebit\tCredit\tRunning Balance",
+        "01-SEP-2026\t 01-SEP-2026\t B/F...\t -\t -\t -\t 5,000.00",
+        "01-SEP-2026 07:24:03\t 01-SEP-2026\t UPI-DR-100000000001-CITY GROCERY STORE-YESB-002\t 100000000001\t 45.00\t 0.00\t 4,955.00",
+        "01-SEP-2026 14:51:17\t 01-SEP-2026\t UPI-CR-100000000002-A FRIEND-ICIC-6216015001\t 100000000002\t 0.00\t 191.00\t 5,146.00",
+        "02-SEP-2026 00:12:02\t 02-SEP-2026\t UPI-DR-100000000003-Dominospizza-AIRP-1092787575-U\t 100000000003\t 151.20\t 0.00\t 4,994.80",
+        "02-SEP-2026 23:59:59\t 02-SEP-2026\t UPI-DR-100000000004-Blinkit-HDFC-50200015779672-Pa\t 100000000004\t 1,179.00\t 0.00\t 3,815.80",
+        "03-SEP-2026 04:41:20\t 02-SEP-2026\t Credit Interest Capitalised\t -\t 0.00\t 51.00\t 3,866.80",
+        "03-SEP-2026 20:52:18\t 03-SEP-2026\t SMS Charges for SEP2026\t -\t 59.00\t 0.00\t 3,807.80",
+        "03-SEP-2026 21:10:00\t 03-SEP-2026\t MB-WITHIN-DR:XXXX6455-CR:XXXX6431-1555102709266230\t -\t 0.00\t 5,000.00\t 8,807.80",
+    ]
+)
+
+
+def test_kvb_style_layout_is_understood():
+    result = parse_statement(KVB_STYLE.encode())
+    assert result.columns["date"] == "Transaction Date" and result.columns["amount"] == "Debit"
+    assert [(r.merchant, r.amount) for r in result.rows] == [
+        ("City Grocery Store", Decimal("45.00")),
+        ("Dominospizza", Decimal("151.20")),
+        ("Blinkit", Decimal("1179.00")),
+        ("Sms Charges", Decimal("59.00")),
+    ]
+    assert result.credits_ignored == 3  # the friend, the interest and the self-transfer
+    assert result.invalid == []  # the "B/F" opening-balance line is a note, not an error
+
+
+def test_bank_times_are_indian_time_not_utc():
+    result = parse_statement(KVB_STYLE.encode())
+    just_after_midnight = result.rows[1].occurred_at  # printed as 02-SEP-2026 00:12:02 (IST)
+    assert just_after_midnight.isoformat() == "2026-09-01T18:42:02+00:00"  # 5h30m earlier in UTC
+    assert parse_date("02-SEP-2026 05:29:59").date().isoformat() == "2026-09-01"  # still the 1st in UTC
+
+
+def test_dashes_mean_no_amount():
+    assert parse_amount("-") is None
+    assert parse_amount("—") is None
+    assert parse_amount("-5") == Decimal("-5")  # a real negative number is unaffected
+
+
 def test_unreadable_text_falls_back_instead_of_going_blank():
     assert clean_merchant("1234567890 /// 987654") != ""
     assert len(clean_merchant("x" * 500)) <= 60

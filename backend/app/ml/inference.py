@@ -12,6 +12,8 @@ from pathlib import Path
 import joblib
 import numpy as np
 
+from app.ml.rules import rule_category
+
 ARTIFACTS = Path(__file__).parent / "artifacts"
 
 # Below this confidence the categorizer says "Uncategorized" instead of guessing.
@@ -34,16 +36,17 @@ def _anomaly():
 
 
 def predict_categories(merchants: list[str]) -> list[str]:
-    """Category for each merchant, or 'Uncategorized' when the model isn't sure."""
+    """Category for each merchant: keyword rules first, then the model, else 'Uncategorized'."""
+    results = [rule_category(m) for m in merchants]  # None where no rule applies
     model = _categorizer()
-    if model is None or not merchants:
-        return [UNCATEGORIZED] * len(merchants)
-    probabilities = model.predict_proba(merchants)
-    best = probabilities.argmax(axis=1)
-    return [
-        str(model.classes_[b]) if probabilities[row, b] >= MIN_CONFIDENCE else UNCATEGORIZED
-        for row, b in enumerate(best)
-    ]
+    undecided = [i for i, category in enumerate(results) if category is None]
+    if model is not None and undecided:
+        probabilities = model.predict_proba([merchants[i] for i in undecided])
+        best = probabilities.argmax(axis=1)
+        for row, i in enumerate(undecided):
+            if probabilities[row, best[row]] >= MIN_CONFIDENCE:
+                results[i] = str(model.classes_[best[row]])
+    return [category or UNCATEGORIZED for category in results]
 
 
 def predict_category(merchant: str) -> str:

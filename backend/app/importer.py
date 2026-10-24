@@ -18,7 +18,7 @@ import csv
 import io
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 
 MAX_FILE_BYTES = 2 * 1024 * 1024  # a year of statements is ~100 KB; 2 MB is generous
@@ -38,6 +38,9 @@ DEBIT_NAMES = ["withdrawal amt", "withdrawal amount", "withdrawals", "withdrawal
 CREDIT_NAMES = ["deposit amt", "deposit amount", "deposits", "deposit", "credit amount", "credit amt", "credit", "cr amount", "cr", "paid in", "money in"]
 AMOUNT_NAMES = ["transaction amount", "txn amount", "amount", "amt"]
 TYPE_NAMES = ["dr/cr", "cr/dr", "debit/credit", "transaction type", "txn type", "type"]
+
+IST = timezone(timedelta(hours=5, minutes=30))  # India has no daylight saving, so a fixed offset is exact
+EMPTY_MARKERS = {"-", "--", "—", "–"}  # how banks print "no amount"
 
 DEBIT_MARKERS = {"dr", "d", "debit", "withdrawal", "wd"}
 CREDIT_MARKERS = {"cr", "c", "credit", "deposit"}
@@ -70,7 +73,7 @@ def _find(columns: dict[str, int], names: list[str]) -> int | None:
 def parse_amount(text: str) -> Decimal | None:
     """'1,23,456.78' -> 123456.78. Negative for '-5', '(5)' or '5 Dr'; None if not a number."""
     s = text.strip()
-    if not s:
+    if not s or s in EMPTY_MARKERS:  # banks print "-" for "no amount"
         return None
     negative = False
     if s.startswith("(") and s.endswith(")"):
@@ -96,8 +99,14 @@ def parse_amount(text: str) -> Decimal | None:
 
 
 def parse_date(text: str) -> datetime | None:
-    """Day-first dates. A date with no time is set to 12:00 UTC so it stays on the same
-    calendar day in every timezone."""
+    """Day-first dates, returned in UTC.
+
+    * A date with no time is set to 12:00 UTC (17:30 IST), which is the same calendar day
+      from India to the US.
+    * A date WITH a time ("24-SEP-2026 07:24:03") is read as Indian time (IST), because
+      that is how Indian banks print it, then converted to UTC. Reading it as UTC would
+      shift every transaction by 5.5 hours and push late-night ones onto the wrong day.
+    """
     s = re.sub(r"\s+", " ", text.strip())
     if not s:
         return None
@@ -106,9 +115,9 @@ def parse_date(text: str) -> datetime | None:
             parsed = datetime.strptime(s, fmt)
         except ValueError:
             continue
-        if "%H" not in fmt:
-            parsed = datetime.combine(parsed.date(), time(12, 0))
-        return parsed.replace(tzinfo=timezone.utc)
+        if "%H" in fmt:
+            return parsed.replace(tzinfo=IST).astimezone(timezone.utc)
+        return datetime.combine(parsed.date(), time(12, 0)).replace(tzinfo=timezone.utc)
     return None
 
 
@@ -289,13 +298,15 @@ def parse_statement(content: bytes) -> ParseResult:
         if use_debit_column:
             debit_text = cell(row, found["debit"])
             amount = parse_amount(debit_text)
-            if not debit_text:
-                result.credits_ignored += 1  # empty Withdrawal cell: money came IN
-                continue
-            if amount is None:
+            if amount is None and debit_text and debit_text not in EMPTY_MARKERS:
                 result.invalid.append(f"line {line}: unreadable amount '{debit_text[:20]}'")
                 continue
-            if amount == 0:
+            if not amount:  # blank, "-" or 0.00 in the Debit column: nothing was spent
+                # money came IN if the Credit column has an amount; "-" in both (an opening
+                # balance line) is just a note
+                credit = parse_amount(cell(row, found["credit"])) if found["credit"] is not None else None
+                if credit or (found["credit"] is None and not debit_text):
+                    result.credits_ignored += 1
                 continue
             amount = abs(amount)
         else:
