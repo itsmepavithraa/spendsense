@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import analytics, auth, billing, simulate, transactions, ws
+from app.routers import analytics, auth, billing, merchants, simulate, transactions, ws
 
 app = FastAPI(title="SpendSense API", version="0.1.0")
 
@@ -23,6 +23,7 @@ app.include_router(auth.router)
 app.include_router(transactions.router)
 app.include_router(analytics.router)
 app.include_router(billing.router)
+app.include_router(merchants.router)
 app.include_router(ws.router)
 app.include_router(simulate.router)
 

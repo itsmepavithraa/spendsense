@@ -10,7 +10,17 @@ Design notes:
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, Numeric, String, false, func
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    UniqueConstraint,
+    false,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -30,6 +40,27 @@ class User(Base):
 
     transactions: Mapped[list["Transaction"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class CategoryOverride(Base):
+    """A correction the user made once: 'this merchant is always this category'.
+
+    Beats the keyword rules and the ML model, for existing rows (updated when the
+    correction is made) and for every future import or new transaction.
+    """
+
+    __tablename__ = "category_overrides"
+    __table_args__ = (UniqueConstraint("user_id", "merchant_key", name="uq_override_user_merchant"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    merchant_key: Mapped[str] = mapped_column(String(120))  # see categories.merchant_key()
+    category: Mapped[str] = mapped_column(String(50))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
     )
 
 

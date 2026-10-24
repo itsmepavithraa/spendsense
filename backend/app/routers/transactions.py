@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal, get_db
 from app.deps import get_current_user
+from app.categories import merchant_key
 from app.importer import MAX_FILE_BYTES, StatementError, parse_statement
 from app.ml.inference import UNCATEGORIZED, anomaly_flags, predict_categories
 from app.models import Transaction, User
@@ -29,7 +30,7 @@ from app.schemas import (
     TransactionOut,
     TransactionUpdate,
 )
-from app.services import create_transaction_for_user
+from app.services import create_transaction_for_user, load_overrides
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -128,6 +129,8 @@ def import_statement(
 
     # one batch call each for the models: far faster than scoring row by row
     categories = predict_categories([r.merchant for r in fresh])
+    remembered = load_overrides(db, user.id)  # the user's own corrections beat rules and model
+    categories = [remembered.get(merchant_key(r.merchant), c) for r, c in zip(fresh, categories)]
     flags = anomaly_flags([float(r.amount) for r in fresh], categories)
     db.add_all(
         Transaction(

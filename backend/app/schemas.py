@@ -7,7 +7,9 @@ hash can never leak in a response.
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+from app.categories import ALLOWED_CATEGORIES
 
 
 # ---------- Auth ----------
@@ -49,6 +51,31 @@ class VerifyPaymentIn(BaseModel):
     razorpay_signature: str
 
 
+# ---------- Category corrections ----------
+class CategoryOverrideIn(BaseModel):
+    merchant: str = Field(min_length=1, max_length=120)
+    category: str
+
+    @field_validator("category")
+    @classmethod
+    def must_be_a_known_category(cls, value: str) -> str:
+        if value not in ALLOWED_CATEGORIES:
+            raise ValueError(f"category must be one of: {', '.join(ALLOWED_CATEGORIES)}")
+        return value
+
+
+class CategoryOverrideOut(BaseModel):
+    merchant: str
+    category: str
+    updated: int  # how many existing transactions were changed
+
+
+class UncategorizedMerchant(BaseModel):
+    merchant: str
+    count: int
+    total: float
+
+
 # ---------- Statement import ----------
 class ImportPreviewRow(BaseModel):
     date: str
@@ -76,11 +103,24 @@ class ImportResult(BaseModel):
 
 
 # ---------- Transactions ----------
+def _tidy_merchant(value: str | None) -> str | None:
+    """Store merchant names with single spaces and no padding, so 'Sri  Store ' and
+    'Sri Store' are one shop everywhere (corrections, grouping, de-duplication)."""
+    if value is None:
+        return None
+    tidy = " ".join(value.split())
+    if not tidy:
+        raise ValueError("merchant must not be blank")
+    return tidy
+
+
 class TransactionCreate(BaseModel):
     amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
     merchant: str = Field(min_length=1, max_length=120)
     category: str | None = Field(default=None, max_length=50)
     occurred_at: datetime | None = None
+
+    _tidy = field_validator("merchant")(_tidy_merchant)
 
 
 class TransactionUpdate(BaseModel):
@@ -88,6 +128,8 @@ class TransactionUpdate(BaseModel):
     merchant: str | None = Field(default=None, min_length=1, max_length=120)
     category: str | None = Field(default=None, max_length=50)
     occurred_at: datetime | None = None
+
+    _tidy = field_validator("merchant")(_tidy_merchant)
 
 
 class TransactionOut(BaseModel):

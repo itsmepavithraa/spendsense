@@ -1,8 +1,10 @@
-import { categoryColor, formatINRExact, Transaction } from "@/lib/api";
+import { CATEGORY_CHOICES, categoryColor, formatINRExact, Transaction } from "@/lib/api";
 
 interface Props {
   transactions: Transaction[];
   fresh: Set<number>; // ids that just arrived live, to highlight briefly
+  // when given, the category becomes a dropdown; the choice applies to the whole merchant
+  onRecategorize?: (merchant: string, category: string) => void;
 }
 
 const when = (iso: string) =>
@@ -13,7 +15,7 @@ const when = (iso: string) =>
     minute: "2-digit",
   });
 
-export default function TransactionsTable({ transactions, fresh }: Props) {
+export default function TransactionsTable({ transactions, fresh, onRecategorize }: Props) {
   if (transactions.length === 0) {
     return <p className="p-6 text-sm text-muted">No transactions yet. Add one or start the simulator.</p>;
   }
@@ -47,7 +49,23 @@ export default function TransactionsTable({ transactions, fresh }: Props) {
               <td className="px-5 py-3">
                 <span className="inline-flex items-center gap-2">
                   <span className="h-2 w-2 rounded-full" style={{ background: categoryColor(t.category) }} />
-                  {t.category}
+                  {onRecategorize ? (
+                    <select
+                      aria-label={`Category for ${t.merchant}`}
+                      title="Change the category for every transaction from this shop"
+                      value={t.category}
+                      onChange={(e) => onRecategorize(t.merchant, e.target.value)}
+                      className="cursor-pointer rounded border border-transparent bg-transparent py-0.5 pr-1 hover:border-line focus:border-accent"
+                    >
+                      {CATEGORY_CHOICES.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    t.category
+                  )}
                 </span>
               </td>
               <td

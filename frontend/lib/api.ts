@@ -46,6 +46,12 @@ export interface Subscription {
   yearly_cost: number;
 }
 
+export interface UncategorizedMerchant {
+  merchant: string;
+  count: number;
+  total: number;
+}
+
 export interface ImportResult {
   imported: number;
   duplicates_skipped: number;
@@ -65,6 +71,7 @@ export interface ImportResult {
 export type LiveEvent =
   | { type: "connected"; data: { user_id: number } }
   | { type: "transactions.imported"; data: { count: number; unusual: number } }
+  | { type: "transactions.recategorized"; data: { merchant: string; category: string; count: number } }
   | { type: "transaction.created"; data: Transaction }
   | { type: "anomaly.alert"; data: Transaction & { message: string } };
 
@@ -162,3 +169,8 @@ export const CATEGORY_COLORS: Record<string, string> = {
   Uncategorized: "#94a3b8",
 };
 export const categoryColor = (name: string) => CATEGORY_COLORS[name] ?? "#94a3b8";
+// every category a user can pick, with "Uncategorized" last (matches the API's allowed list)
+export const CATEGORY_CHOICES = [
+  ...Object.keys(CATEGORY_COLORS).filter((c) => c !== "Uncategorized"),
+  "Uncategorized",
+];

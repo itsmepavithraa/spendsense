@@ -10,6 +10,7 @@ import StatCard from "@/components/StatCard";
 import SubscriptionsCard from "@/components/SubscriptionsCard";
 import Toasts, { ToastItem } from "@/components/Toasts";
 import TransactionsTable from "@/components/TransactionsTable";
+import UncategorizedPanel from "@/components/UncategorizedPanel";
 import {
   api,
   ApiError,
@@ -21,6 +22,7 @@ import {
   Subscription,
   Summary,
   Transaction,
+  UncategorizedMerchant,
   User,
 } from "@/lib/api";
 import { startProCheckout } from "@/lib/razorpay";
@@ -34,6 +36,7 @@ export default function Dashboard() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [uncategorized, setUncategorized] = useState<UncategorizedMerchant[]>([]);
   const [fresh, setFresh] = useState<Set<number>>(new Set()); // rows that just arrived live
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [simulating, setSimulating] = useState(false);
@@ -58,12 +61,14 @@ export default function Dashboard() {
       api<Summary>("/analytics/summary"),
       api<Transaction[]>("/transactions?limit=25"),
       api<Subscription[]>("/analytics/subscriptions"),
+      api<UncategorizedMerchant[]>("/merchants/uncategorized"),
     ])
-      .then(([u, s, t, subs]) => {
+      .then(([u, s, t, subs, unc]) => {
         setUser(u);
         setSummary(s);
         setTransactions(t);
         setSubscriptions(subs);
+        setUncategorized(unc);
       })
       .catch((err) => {
         if (err instanceof ApiError && err.status === 401) logout(); // token expired
@@ -109,19 +114,43 @@ export default function Dashboard() {
       api<Summary>("/analytics/summary"),
       api<Transaction[]>("/transactions?limit=25"),
       api<Subscription[]>("/analytics/subscriptions"),
+      api<UncategorizedMerchant[]>("/merchants/uncategorized"),
     ])
-      .then(([s, t, subs]) => {
+      .then(([s, t, subs, unc]) => {
         setSummary(s);
         setTransactions(t);
         setSubscriptions(subs);
+        setUncategorized(unc);
       })
       .catch(() => {});
   }, []);
+
+  // Teach the app: set a merchant's category once; the server fixes every existing row
+  // and remembers it for future imports.
+  const recategorize = useCallback(
+    async (merchant: string, category: string) => {
+      try {
+        const result = await api<{ updated: number }>("/merchants/category", {
+          method: "PUT",
+          body: { merchant, category },
+        });
+        pushToast(
+          `${result.updated} transaction${result.updated === 1 ? "" : "s"} from ${merchant} set to ${category}. Remembered for future imports.`,
+          "info",
+        );
+        refreshAll();
+      } catch {
+        pushToast("Could not save that category.", "error");
+      }
+    },
+    [pushToast, refreshAll],
+  );
 
   // ----- WebSocket: this is where "real time" happens -----
   const live = useLiveFeed((event: LiveEvent) => {
     if (event.type === "transaction.created") addRow(event.data);
     if (event.type === "anomaly.alert") pushToast(event.data.message);
+    if (event.type === "transactions.recategorized") refreshAll(); // a correction made in another tab
     if (event.type === "transactions.imported") {
       refreshAll(); // also fires for an upload made in another tab or device
       pushToast(`Imported ${event.data.count} transactions.`, "info");
@@ -253,6 +282,9 @@ export default function Dashboard() {
         <SubscriptionsCard items={subscriptions} />
       </section>
 
+      {/* shops the app couldn't categorise: fix once, remembered forever */}
+      <UncategorizedPanel items={uncategorized} onChoose={recategorize} />
+
       {/* add + live feed */}
       <section className="mt-4 rounded-2xl border border-line bg-surface">
         <div className="border-b border-line px-5 py-3">
@@ -275,7 +307,7 @@ export default function Dashboard() {
             Export CSV {!user.is_pro && <span className="text-xs text-muted">(Pro)</span>}
           </button>
         </div>
-        <TransactionsTable transactions={transactions} fresh={fresh} />
+        <TransactionsTable transactions={transactions} fresh={fresh} onRecategorize={recategorize} />
       </section>
     </div>
   );
