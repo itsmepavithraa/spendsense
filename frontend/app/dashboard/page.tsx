@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import AddTransactionForm from "@/components/AddTransactionForm";
@@ -234,6 +235,12 @@ export default function Dashboard() {
             <span className={`h-2 w-2 rounded-full ${live ? "animate-pulse bg-good" : "bg-muted"}`} />
             {live ? "Live" : "Reconnecting…"}
           </span>
+          <Link
+            href="/insights"
+            className="rounded-lg border border-accent px-3 py-1.5 text-sm font-medium text-accent transition hover:bg-accent/10"
+          >
+            Insights &amp; savings
+          </Link>
           {user.is_pro ? (
             <span className="rounded-full bg-accent/15 px-3 py-1 text-xs font-semibold text-accent">PRO</span>
           ) : (

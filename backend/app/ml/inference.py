@@ -17,9 +17,11 @@ from app.ml.rules import rule_category
 ARTIFACTS = Path(__file__).parent / "artifacts"
 
 # Below this confidence the categorizer says "Uncategorized" instead of guessing.
-# Real bank text ("ATM WDL MG ROAD", a person's name) is far from the training
-# data; a wrong confident label is worse than an honest "I don't know".
-MIN_CONFIDENCE = 0.5
+# Measured on real bank text: brands the model knows score 0.74 or more (Swiggy 0.98,
+# Ola 0.93, Netflix 0.74), while names it has never seen, such as a person's name, score
+# only 0.4 to 0.6. At 0.5 a person was labelled "Transport" and distorted the advice, so
+# the bar sits at 0.7. A wrong label is worse than an honest "I don't know".
+MIN_CONFIDENCE = 0.7
 UNCATEGORIZED = "Uncategorized"
 
 

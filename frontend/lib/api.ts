@@ -46,6 +46,48 @@ export interface Subscription {
   yearly_cost: number;
 }
 
+export interface InsightTip {
+  id: string;
+  priority: "high" | "medium" | "low" | "good";
+  title: string;
+  detail: string;
+  monthly_saving: number | null; // an estimate in rupees per month, not a promise
+}
+
+export interface Insights {
+  period: { from: string | null; to: string | null; days: number; all_time: boolean };
+  totals: {
+    spent: number;
+    payments: number;
+    daily_average: number;
+    previous_spent: number | null;
+    change_pct: number | null;
+    peak_day: { date: string; total: number } | null;
+  };
+  by_category: {
+    category: string;
+    total: number;
+    count: number;
+    share_pct: number;
+    previous_total: number | null;
+    change_pct: number | null;
+  }[];
+  top_merchants: { merchant: string; total: number; count: number; average: number }[];
+  daily: { date: string; total: number }[];
+  by_weekday: { weekday: string; total: number; count: number }[];
+  small_spends: {
+    threshold: number;
+    count: number;
+    total: number;
+    share_of_payments_pct: number;
+    top_merchants: { merchant: string; count: number; total: number }[];
+  };
+  largest: { date: string; merchant: string; category: string; amount: number }[];
+  uncategorized: { count: number; total: number; share_pct: number };
+  suggestions: InsightTip[];
+  summary_lines: string[];
+}
+
 export interface UncategorizedMerchant {
   merchant: string;
   count: number;

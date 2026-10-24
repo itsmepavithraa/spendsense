@@ -52,6 +52,17 @@ def test_rules_do_not_override_brands_the_model_knows():
     assert predict_categories(["Amazon Books"]) == ["Education"]
 
 
+def test_names_the_model_has_never_seen_are_not_guessed():
+    # regression: at a 0.5 confidence bar the model labelled a person "Transport"
+    assert predict_categories(["Raguvaran", "Gangeri Chaitanya", "Sunil"]) == ["Uncategorized"] * 3
+
+
+def test_brands_the_model_knows_still_get_their_category():
+    assert predict_categories(["Netflix", "Swiggy", "Uber", "Amazon Books", "Medplus Pharmacy"]) == [
+        "Subscriptions", "Food & Dining", "Transport", "Education", "Health",
+    ]
+
+
 def test_rules_then_model_then_uncategorized_in_one_batch():
     result = predict_categories(["Corner Bakery", "Swiggy", "Sri Manjunath Store"])
     assert result == ["Food & Dining", "Food & Dining", "Uncategorized"]

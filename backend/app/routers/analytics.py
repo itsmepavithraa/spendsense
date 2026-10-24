@@ -6,27 +6,30 @@ the logged-in user.
 """
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import Integer, cast, extract, func, select, text
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
+from app.insights import build_insights, to_txn
 from app.models import Transaction, User
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 
-@router.get("/subscriptions")
-def subscriptions(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    """Recurring monthly charges, detected by the bi_subscriptions SQL view
-    (see the migration for the detection rules)."""
+def fetch_subscriptions(db: Session, user_id: int) -> list[dict]:
+    """Recurring monthly charges, detected by the bi_subscriptions SQL view (see the
+    migration for the detection rules). The view only exists on PostgreSQL, so on
+    SQLite (used by the fast tests) there is simply nothing detected."""
+    if db.get_bind().dialect.name != "postgresql":
+        return []
     rows = db.execute(
         text(
             "SELECT merchant, amount, charges, avg_gap_days, last_charge, yearly_cost "
             "FROM bi_subscriptions WHERE user_id = :uid ORDER BY yearly_cost DESC"
         ),
-        {"uid": user.id},  # bound parameter: never build SQL by string concatenation
+        {"uid": user_id},  # bound parameter: never build SQL by string concatenation
     ).mappings()
     return [
         {
@@ -39,6 +42,32 @@ def subscriptions(db: Session = Depends(get_db), user: User = Depends(get_curren
         }
         for r in rows
     ]
+
+
+@router.get("/subscriptions")
+def subscriptions(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    return fetch_subscriptions(db, user.id)
+
+
+@router.get("/insights")
+def spending_insights(
+    days: int = Query(30, description="Window length in days, ending on your latest transaction. 0 = everything."),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Where the money goes, what to watch, and how much could be saved (see app/insights.py)."""
+    if days != 0 and not 7 <= days <= 366:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "days must be 0 (everything) or between 7 and 366")
+    rows = db.execute(
+        select(Transaction.occurred_at, Transaction.amount, Transaction.merchant, Transaction.category).where(
+            Transaction.user_id == user.id
+        )
+    ).all()
+    return build_insights(
+        [to_txn(*row) for row in rows],
+        days,
+        subscriptions=fetch_subscriptions(db, user.id),
+    )
 
 
 @router.get("/summary")
