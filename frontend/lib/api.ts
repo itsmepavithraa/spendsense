@@ -46,9 +46,25 @@ export interface Subscription {
   yearly_cost: number;
 }
 
+export interface ImportResult {
+  imported: number;
+  duplicates_skipped: number;
+  credits_ignored: number;
+  invalid_rows: number;
+  problems: string[];
+  uncategorized: number;
+  unusual: number;
+  date_from: string | null;
+  date_to: string | null;
+  columns: Record<string, string>;
+  assumed_all_expenses: boolean;
+  preview: { date: string; merchant: string; amount: string; category: string; is_anomaly: boolean }[];
+}
+
 // events pushed by the server over the WebSocket
 export type LiveEvent =
   | { type: "connected"; data: { user_id: number } }
+  | { type: "transactions.imported"; data: { count: number; unusual: number } }
   | { type: "transaction.created"; data: Transaction }
   | { type: "anomaly.alert"; data: Transaction & { message: string } };
 
@@ -63,13 +79,16 @@ interface RequestOptions {
   method?: string;
   body?: unknown; // sent as JSON
   form?: Record<string, string>; // sent as application/x-www-form-urlencoded (login)
+  formData?: FormData; // sent as multipart/form-data (file uploads)
 }
 
 export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = {};
   let body: BodyInit | undefined;
 
-  if (options.form) {
+  if (options.formData) {
+    body = options.formData; // no Content-Type: the browser adds it, with the multipart boundary
+  } else if (options.form) {
     body = new URLSearchParams(options.form);
   } else if (options.body !== undefined) {
     headers["Content-Type"] = "application/json";

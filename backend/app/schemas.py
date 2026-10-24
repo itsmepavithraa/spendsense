@@ -49,6 +49,32 @@ class VerifyPaymentIn(BaseModel):
     razorpay_signature: str
 
 
+# ---------- Statement import ----------
+class ImportPreviewRow(BaseModel):
+    date: str
+    merchant: str
+    amount: str
+    category: str
+    is_anomaly: bool
+
+
+class ImportResult(BaseModel):
+    """What happened to an uploaded statement: shown to the user, nothing hidden."""
+
+    imported: int
+    duplicates_skipped: int  # already in the account from an earlier upload
+    credits_ignored: int  # money in (salary, refunds): not spending
+    invalid_rows: int
+    problems: list[str]  # first few unreadable rows, with line numbers
+    uncategorized: int  # rows the model wasn't confident about
+    unusual: int  # rows flagged as unusually large
+    date_from: str | None
+    date_to: str | None
+    columns: dict[str, str]  # the columns we detected, so the user can sanity-check
+    assumed_all_expenses: bool  # true when the file gave no way to tell spending from deposits
+    preview: list[ImportPreviewRow]
+
+
 # ---------- Transactions ----------
 class TransactionCreate(BaseModel):
     amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)

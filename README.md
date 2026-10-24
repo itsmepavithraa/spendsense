@@ -4,7 +4,9 @@
 
 A real-time personal finance app that **automatically categorizes transactions, flags unusual spending with machine learning, and updates live**. Built as a full-stack + data science + cloud project.
 
-> **Status:** feature-complete and tested (40 automated tests, CI on every push). Left to do: deploy the live demo and add Power BI report screenshots.
+> **Status:** feature-complete and tested (90 automated tests, CI on every push). Left to do: add Power BI report screenshots.
+
+> **Privacy note:** the public demo uses synthetic data and a shared demo login. Don't upload a real bank statement to it; run the project locally (see below) if you want to try your own.
 
 ## What it does
 - Register / log in (JWT authentication)
@@ -14,6 +16,7 @@ A real-time personal finance app that **automatically categorizes transactions, 
 - **Real-time updates:** a WebSocket (`/ws?token=<JWT>`) pushes `transaction.created` and `anomaly.alert` events to the user's open tabs the moment a transaction is saved. Each user only receives their own events.
 - **Bank-feed simulator:** `POST /simulate/start` streams random transactions (through the same save + ML path) so a demo always has live data; `POST /simulate/stop` ends it.
 - **Live dashboard (Next.js):** login/register, headline stats, spend-by-category donut, monthly trend, an add-transaction form, and a transaction table where new rows appear instantly with a toast alert for unusual charges.
+- **Bank statement import:** upload a CSV exported from a bank. The importer finds the header row and columns by itself (separate debit/credit columns or one signed amount, Dr/Cr markers, Indian number formats and day-first dates), keeps spending and ignores deposits, and reduces noisy bank text such as `UPI-SWIGGY-swiggy@icici-4029...` to a merchant name. Rows are categorised and scored in one batch; low-confidence rows stay *Uncategorized* instead of being guessed. Re-uploading a statement never creates duplicates (also under concurrent uploads, via a per-user lock), and the page shows exactly what was imported, skipped and ignored. A sample file is in `frontend/public/sample-statement.csv`.
 - **Subscription detection:** a SQL view finds charges with the same merchant and amount about every month (consistent gaps, 3+ charges) and the dashboard shows the monthly and yearly cost.
 - **Pro plan payments (Razorpay, test mode):** the server creates the order and sets the price, Razorpay Checkout takes payment, and the server verifies the HMAC signature before upgrading the user. A signed webhook is the safety net if the browser never calls back; both paths are idempotent. CSV export is the Pro-only feature.
 - **Power BI analytics:** five analysis-ready SQL views (`bi_*`) feed a 4-page report. See [docs/powerbi.md](docs/powerbi.md) for the data model, DAX measures and page layouts.
@@ -127,7 +130,8 @@ The models are trained on a **synthetic dataset** (~5k transactions) generated b
 - [x] Next.js dashboard with live feed, charts and anomaly toasts
 - [x] Payments (Pro plan), verified checkout and signed webhook
 - [x] Subscription detection and Power BI data layer (SQL views, CSV export, build guide)
-- [x] 40 automated tests and a GitHub Actions pipeline (SQLite, PostgreSQL + reversible migrations, frontend build)
+- [x] 90 automated tests and a GitHub Actions pipeline (SQLite, PostgreSQL + reversible migrations, frontend build)
 - [x] Production container, Render blueprint and deployment guide
-- [ ] Live demo deployed (follow docs/deploy.md)
+- [x] Live demo deployed (Render API + PostgreSQL, Vercel frontend)
+- [x] Bank statement CSV import with merchant cleaning, de-duplication and an upload summary
 - [ ] Power BI report screenshots

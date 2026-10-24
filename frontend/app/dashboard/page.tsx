@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import AddTransactionForm from "@/components/AddTransactionForm";
+import ImportStatement from "@/components/ImportStatement";
 import CategoryDonut from "@/components/CategoryDonut";
 import MonthlyTrend from "@/components/MonthlyTrend";
 import StatCard from "@/components/StatCard";
@@ -102,10 +103,29 @@ export default function Dashboard() {
     setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 7000);
   }, []);
 
+  // After a bulk import, reload everything the page shows from the server.
+  const refreshAll = useCallback(() => {
+    Promise.all([
+      api<Summary>("/analytics/summary"),
+      api<Transaction[]>("/transactions?limit=25"),
+      api<Subscription[]>("/analytics/subscriptions"),
+    ])
+      .then(([s, t, subs]) => {
+        setSummary(s);
+        setTransactions(t);
+        setSubscriptions(subs);
+      })
+      .catch(() => {});
+  }, []);
+
   // ----- WebSocket: this is where "real time" happens -----
   const live = useLiveFeed((event: LiveEvent) => {
     if (event.type === "transaction.created") addRow(event.data);
     if (event.type === "anomaly.alert") pushToast(event.data.message);
+    if (event.type === "transactions.imported") {
+      refreshAll(); // also fires for an upload made in another tab or device
+      pushToast(`Imported ${event.data.count} transactions.`, "info");
+    }
   });
 
   // ----- Pro plan -----
@@ -239,6 +259,13 @@ export default function Dashboard() {
           <h2 className="text-sm font-medium">Add a transaction</h2>
         </div>
         <AddTransactionForm onCreated={addRow} />
+      </section>
+
+      <section className="mt-4 rounded-2xl border border-line bg-surface">
+        <div className="border-b border-line px-5 py-3">
+          <h2 className="text-sm font-medium">Import a bank statement</h2>
+        </div>
+        <ImportStatement onImported={refreshAll} />
       </section>
 
       <section className="mt-4 overflow-hidden rounded-2xl border border-line bg-surface">
